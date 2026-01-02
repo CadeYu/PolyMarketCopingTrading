@@ -15,6 +15,7 @@ public class TelegramNotifier extends TelegramLongPollingBot {
     private final String chatId;
 
     public TelegramNotifier(String botToken, String chatId) {
+        super(botToken);
         this.botToken = botToken;
         this.chatId = chatId;
     }
