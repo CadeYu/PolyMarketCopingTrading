@@ -9,6 +9,14 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ExecutorService;
+import java.util.Collections;
+import java.util.List;
+import java.util.ArrayList;
+
 /**
  * Monitors the Goldsky Subgraph for whale activity.
  * 监控 Goldsky 子图中的巨鲸活动。
@@ -24,7 +32,9 @@ public class WhaleWatcher {
     // whales" or just fetch top 5.
     // 在第一阶段，我们硬编码或获取一个小列表。
     // 为了简化这个演示步骤，我们保留一个硬编码的“已知巨鲸”列表或仅获取前 5 名。
-    private final Set<String> watchedAddresses = new HashSet<>();
+    private final Set<String> watchedAddresses = ConcurrentHashMap.newKeySet();
+    private final Set<String> manualWatchlist = ConcurrentHashMap.newKeySet();
+    private boolean initialDiscoveryDone = false;
 
     // Goldsky Subgraph URLs (Example public endpoints, may need specific project
     // IDs in production)
@@ -36,8 +46,14 @@ public class WhaleWatcher {
 
     private long lastCheckedTimestamp = System.currentTimeMillis() / 1000;
 
-    public WhaleWatcher(TelegramNotifier notifier) {
+    private final int maxDailyTrades;
+    private final double minWinRate;
+
+    private final TradeExecutor tradeExecutor;
+
+    public WhaleWatcher(TelegramNotifier notifier, TradeExecutor tradeExecutor) {
         this.notifier = notifier;
+        this.tradeExecutor = tradeExecutor;
         this.client = new OkHttpClient();
         this.mapper = new ObjectMapper();
 
@@ -50,10 +66,20 @@ public class WhaleWatcher {
                 String cleanAddr = addr.trim();
                 if (!cleanAddr.isEmpty()) {
                     watchedAddresses.add(cleanAddr);
+                    manualWatchlist.add(cleanAddr);
                     System.out.println("Added manual watch address: " + cleanAddr + " / 已添加手动观察地址：" + cleanAddr);
                 }
             }
         }
+
+        // Load filter config / 加载过滤配置
+        String maxTradesStr = dotenv.get("MAX_DAILY_TRADES");
+        this.maxDailyTrades = (maxTradesStr != null) ? Integer.parseInt(maxTradesStr) : 50;
+
+        String minWinRateStr = dotenv.get("MIN_WIN_RATE");
+        this.minWinRate = (minWinRateStr != null) ? Double.parseDouble(minWinRateStr) : 0.60;
+
+        System.out.println("Bot Filter: Max Daily Trades = " + maxDailyTrades + ", Min Win Rate = " + minWinRate);
 
         // Initial "Scout": Fetch Top Traders (Simplification: Monitoring a dummy
         // address if fetch fails)
@@ -63,17 +89,41 @@ public class WhaleWatcher {
     }
 
     /**
+     * Sends a fake alert for testing purposes.
+     * 发送用于测试目的的伪造警报。
+     */
+    public void sendTestAlert() {
+        String fakeUser = "0x1234567890abcdef1234567890abcdef12345678";
+        String title = "Trump vs Harris 2024 Election Winner";
+        String outcome = "Yes";
+        String type = "Buy";
+        String amount = "1000.00";
+
+        String msg = "🧪 *TEST ALERT / 测试警报*\n\nUser: `" + fakeUser + "`\nAction: " + type + "\nMarket: " + title
+                + "\nAmount: $" + amount + " USDC\nOutcome: " + outcome;
+
+        notifier.sendAlert(msg);
+        System.out.println("Sent TEST alert.");
+
+        // Also simulate execution
+        tradeExecutor.executeCopyTrade(fakeUser, title, outcome, type);
+    }
+
+    /**
      * Polls for new trades.
      * 轮询新交易。
      */
     public void poll() {
         try {
-            // 1. Refresh "Whales" list occasionally (e.g. if empty) / 偶尔刷新“巨鲸”列表（例如，如果为空）
-            if (watchedAddresses.isEmpty()) {
+            // 1. Refresh "Whales" list on startup (Auto-Discovery)
+            // 启动时刷新“巨鲸”列表（自动发现）
+            if (!initialDiscoveryDone) {
                 fetchTopTraders();
+                initialDiscoveryDone = true;
             }
 
-            System.out.println("Polling for whale activity... / 正在轮询巨鲸活动...");
+            System.out.println("Polling activity for " + watchedAddresses.size() + " whales... / 正在为 "
+                    + watchedAddresses.size() + " 个巨鲸轮询活动...");
 
             // 2. Query recent activity (Transactions/Trades) / 查询最近活动（交易）
             // Schema guess: multifillOrders or fpmmTrade (Fixed Product Market Maker Trade)
@@ -115,12 +165,24 @@ public class WhaleWatcher {
                                 String amount = trade.path("collateralAmount").asText(); // USDC Amount
                                 String outcome = trade.path("outcomeIndex").asText(); // Yes/No index
 
+                                // Check type of whale / 检查巨鲸类型
+                                boolean isManual = manualWatchlist.contains(creator);
+                                String alertTitle = isManual ? "🚨 *Whale Alert!* 巨鲸警报!"
+                                        : "🔍 *Smart Money Alert* 聪明钱警报";
+
                                 String msg = String.format(
-                                        "🚨 *Whale Alert!* 巨鲸警报!\n\nUser: `%s`\nAction: %s\nMarket: %s\nAmount: $%s USDC\nOutcome: %s",
-                                        creator, type, title, amount, outcome);
+                                        "%s\n\nUser: `%s`\nAction: %s\nMarket: %s\nAmount: $%s USDC\nOutcome: %s",
+                                        alertTitle, creator, type, title, amount, outcome);
 
                                 notifier.sendAlert(msg);
                                 System.out.println("Alert sent for: " + creator);
+
+                                // Execute Copy Trade ONLY for manual list / 仅为手动列表执行跟单交易
+                                if (isManual) {
+                                    tradeExecutor.executeCopyTrade(creator, title, outcome, type);
+                                } else {
+                                    System.out.println("Observation only (Smart Money): " + creator);
+                                }
                             }
                         }
                         // Update last checked time to avoid duplicates
@@ -140,10 +202,76 @@ public class WhaleWatcher {
         }
     }
 
+    /**
+     * Checks if an address behaves like a bot (high frequency).
+     * 检查地址是否像机器人一样行为（高频）。
+     * 
+     * @param address The address to check / 要检查的地址
+     * @return true if bot / 如果是机器人则返回 true
+     */
+    private boolean isPotentialBot(String address) {
+        // Query trades in last 24 hours / 查询过去 24 小时的交易
+        long oneDayAgo = (System.currentTimeMillis() / 1000) - 86400;
+
+        // We ask for (maxDailyTrades + 1) items. If we get that many, it's a bot.
+        // 我们请求 (maxDailyTrades + 1) 个条目。如果得到那么多，那就是机器人。
+        String query = String.format(
+                "{ \"query\": \"{ fpmmTrades(first: %d, where: { creator: \\\"%s\\\", creationTimestamp_gt: \\\"%d\\\" }) { id } }\" }",
+                maxDailyTrades + 1, address, oneDayAgo);
+
+        Request request = new Request.Builder()
+                .url(ACTIVITY_SUBGRAPH_URL)
+                .post(RequestBody.create(query, MediaType.parse("application/json")))
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (response.isSuccessful() && response.body() != null) {
+                JsonNode root = mapper.readTree(response.body().string());
+                JsonNode trades = root.path("data").path("fpmmTrades");
+                if (trades.isArray()) {
+                    int count = trades.size();
+                    if (count > maxDailyTrades) {
+                        System.out.println("⚠️ Detected Bot: " + address + " (" + count + " trades/24h) / 检测到机器人："
+                                + address + " (" + count + " 笔交易/24小时)");
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error checking bot status for " + address + ": " + e.getMessage());
+        }
+        return false;
+    }
+
+    private boolean checkWinRate(String address, double profit) {
+        // Since we don't have a guaranteed 'winRate' field in the public schema without
+        // verifying,
+        // We will currently use a heuristic: Must be Profitable.
+        // 由于在未验证的情况下公共 Schema 中没有保证的 'winRate' 字段，
+        // 我们目前使用启发式方法：必须盈利。
+
+        // In a real production app, we would query: { user(id: "...") { stats { winRate
+        // } } }
+        // 在真实的生产应用中，我们会查询：{ user(id: "...") { stats { winRate } } }
+
+        // For now, if Profit is very high, we assume they are "Winning".
+        // 目前，如果利润很高，我们假设他们是“赢家”。
+        if (profit <= 0) {
+            System.out.println("Skipping Low Profit user: " + address);
+            return false;
+        }
+
+        // TODO: Implement actual field query when Schema is available.
+        // 待办：可用时实施实际字段查询。
+        return true;
+    }
+
     private void fetchTopTraders() {
         // Construct GraphQL query for users sorted by profit
         // 构建按利润排序的用户的 GraphQL 查询
-        String query = "{ \"query\": \"{ users(first: 5, orderBy: profit, orderDirection: desc) { id profit } }\" }";
+        // Fetching top 50 to filter down to top 20 humans
+        // 获取前 50 名以过滤出前 20 名真人
+        String query = "{ \"query\": \"{ users(first: 50, orderBy: profit, orderDirection: desc) { id profit } }\" }";
 
         Request request = new Request.Builder()
                 .url(PNL_SUBGRAPH_URL)
@@ -154,19 +282,46 @@ public class WhaleWatcher {
             if (response.isSuccessful() && response.body() != null) {
                 String responseBody = response.body().string();
                 JsonNode root = mapper.readTree(responseBody);
-                JsonNode users = root.path("data").path("users");
+                JsonNode usersNode = root.path("data").path("users");
 
-                if (users.isArray()) {
-                    System.out.println("---- Top Whales (Profit) / 顶级巨鲸 (利润) ----");
-                    for (JsonNode user : users) {
-                        String address = user.path("id").asText();
-                        double profit = user.path("profit").asDouble();
-                        watchedAddresses.add(address);
-                        System.out.printf("Whale: %s | Profit: $%.2f%n", address, profit);
-                    }
-                    if (users.size() > 0) {
-                        notifier.sendAlert("🐳 Found " + users.size() + " Top Whales on startup! / 启动时发现了 "
-                                + users.size() + " 名顶级巨鲸！");
+                if (usersNode.isArray()) {
+                    System.out.println("---- Top Whales Analysis (Profit) [Parallel] / 顶级巨鲸分析 (利润) [并行] ----");
+
+                    // Convert JsonNode to List for parallel streaming
+                    List<JsonNode> candidates = new ArrayList<>();
+                    usersNode.forEach(candidates::add);
+
+                    // Parallel Stream to check Bot Status & Win Rate concurrently
+                    // 并行流以并发检查机器人状态和胜率
+                    List<String> validWhales = candidates.parallelStream()
+                            .filter(user -> {
+                                String address = user.path("id").asText();
+                                double profit = user.path("profit").asDouble();
+
+                                // Check for Bot / 检查机器人
+                                if (isPotentialBot(address)) {
+                                    return false;
+                                }
+                                // Check Win Rate / 检查胜率
+                                if (!checkWinRate(address, profit)) {
+                                    return false;
+                                }
+                                return true;
+                            })
+                            .map(user -> user.path("id").asText())
+                            .limit(20) // Take top 20 valid ones
+                            .toList();
+
+                    // Add to watched list
+                    validWhales.forEach(addr -> {
+                        watchedAddresses.add(addr);
+                        System.out.println("✅ Smart Money Added: " + addr);
+                    });
+
+                    if (!validWhales.isEmpty()) {
+                        String msg = "🐳 Found " + validWhales.size()
+                                + " Smart Money Whales (Parallel Scan)! / 并行扫描发现了 " + validWhales.size() + " 名聪明钱巨鲸！";
+                        notifier.sendAlert(msg);
                     }
                 }
             } else {

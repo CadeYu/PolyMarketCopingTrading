@@ -1,5 +1,6 @@
 package com.polymarket.bot.service;
 
+import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -14,8 +15,8 @@ public class TelegramNotifier extends TelegramLongPollingBot {
     private final String botToken;
     private final String chatId;
 
-    public TelegramNotifier(String botToken, String chatId) {
-        super(botToken);
+    public TelegramNotifier(DefaultBotOptions options, String botToken, String chatId) {
+        super(options, botToken);
         this.botToken = botToken;
         this.chatId = chatId;
     }

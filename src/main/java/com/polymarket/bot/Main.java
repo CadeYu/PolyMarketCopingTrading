@@ -1,8 +1,10 @@
 package com.polymarket.bot;
 
 import com.polymarket.bot.service.TelegramNotifier;
+import com.polymarket.bot.service.TradeExecutor;
 import com.polymarket.bot.service.WhaleWatcher;
 import io.github.cdimascio.dotenv.Dotenv;
+import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
@@ -28,8 +30,21 @@ public class Main {
         }
 
         try {
-            // 2. Initialize Telegram Bot / 初始化 Telegram 机器人
-            TelegramNotifier bot = new TelegramNotifier(botToken, chatId);
+            // 2. Initialize Telegram Bot with Proxy Support / 初始化带代理支持的 Telegram 机器人
+            DefaultBotOptions botOptions = new DefaultBotOptions();
+
+            String proxyHost = dotenv.get("HTTP_PROXY_HOST");
+            String proxyPort = dotenv.get("HTTP_PROXY_PORT");
+
+            if (proxyHost != null && !proxyHost.isEmpty() && proxyPort != null && !proxyPort.isEmpty()) {
+                botOptions.setProxyType(DefaultBotOptions.ProxyType.HTTP);
+                botOptions.setProxyHost(proxyHost);
+                botOptions.setProxyPort(Integer.parseInt(proxyPort));
+                System.out.println(
+                        "Using Proxy: " + proxyHost + ":" + proxyPort + " / 使用代理：" + proxyHost + ":" + proxyPort);
+            }
+
+            TelegramNotifier bot = new TelegramNotifier(botOptions, botToken, chatId);
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botsApi.registerBot(bot);
             System.out.println("Telegram Bot started successfully. / Telegram 机器人启动成功。");
@@ -37,11 +52,15 @@ public class Main {
             bot.sendAlert("🤖 Polymarket Bot Started! Monitoring whales... \n🤖 Polymarket 机器人已启动！正在监控巨鲸...");
 
             // 3. Initialize Whale Watcher / 初始化巨鲸观察者
-            WhaleWatcher watcher = new WhaleWatcher(bot);
+            TradeExecutor executor = new TradeExecutor(bot);
+            WhaleWatcher watcher = new WhaleWatcher(bot, executor);
 
-            // 4. Schedule Polling (e.g., every 30 seconds) / 调度轮询（例如，每 30 秒）
+            // Send a test alert immediately / 立即发送测试警报
+            watcher.sendTestAlert();
+
+            // 4. Schedule Polling (e.g., every 5 seconds) / 调度轮询（例如，每 5 秒）
             ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-            scheduler.scheduleAtFixedRate(watcher::poll, 0, 30, TimeUnit.SECONDS);
+            scheduler.scheduleAtFixedRate(watcher::poll, 0, 5, TimeUnit.SECONDS);
             System.out.println("Whale polling scheduled. / 巨鲸轮询已调度。");
 
         } catch (Exception e) {
