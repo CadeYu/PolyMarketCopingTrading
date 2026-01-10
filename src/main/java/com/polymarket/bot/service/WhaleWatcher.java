@@ -54,11 +54,32 @@ public class WhaleWatcher {
     public WhaleWatcher(TelegramNotifier notifier, TradeExecutor tradeExecutor) {
         this.notifier = notifier;
         this.tradeExecutor = tradeExecutor;
-        this.client = new OkHttpClient();
         this.mapper = new ObjectMapper();
 
-        // Load manual watchlist from env / 从环境变量加载手动观察列表
+        // Load dotenv first needed for Proxy config
         Dotenv dotenv = Dotenv.load();
+
+        // Configure Proxy for OkHttp (Goldsky API)
+        String proxyHost = dotenv.get("HTTP_PROXY_HOST");
+        String proxyPort = dotenv.get("HTTP_PROXY_PORT");
+
+        if (proxyHost != null && !proxyHost.isEmpty() && proxyPort != null && !proxyPort.isEmpty()) {
+            java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.HTTP,
+                    new java.net.InetSocketAddress(proxyHost, Integer.parseInt(proxyPort)));
+            this.client = new OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .proxy(proxy)
+                    .build();
+            System.out.println("WhaleWatcher using HTTP Proxy: " + proxyHost + ":" + proxyPort);
+        } else {
+            this.client = new OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+        }
+
+        // Load manual watchlist from env / 从环境变量加载手动观察列表
         String manualList = dotenv.get("MANUAL_WATCHLIST");
         if (manualList != null && !manualList.isEmpty()) {
             String[] addresses = manualList.split(",");
@@ -107,6 +128,36 @@ public class WhaleWatcher {
 
         // Also simulate execution
         tradeExecutor.executeCopyTrade(fakeUser, title, outcome, type);
+    }
+
+    /**
+     * Tests connection to Goldsky by fetching 1 global trade.
+     * 通过获取 1 笔全球交易来测试与 Goldsky 的连接。
+     */
+    public boolean testConnection() {
+        String query = "{ \"query\": \"{ fpmmTrades(first: 1, orderBy: creationTimestamp, orderDirection: desc) { creationTimestamp } }\" }";
+        Request request = new Request.Builder()
+                .url(ACTIVITY_SUBGRAPH_URL)
+                .post(RequestBody.create(query, MediaType.parse("application/json")))
+                .build();
+
+        System.out.println("Testing Goldsky Connection... / 正在测试 Goldsky 连接...");
+        try (Response response = client.newCall(request).execute()) {
+            if (response.isSuccessful() && response.body() != null) {
+                System.out.println("✅ Connection Successful! (Status: " + response.code() + ") / 连接成功！（状态："
+                        + response.code() + ")");
+                return true;
+            } else {
+                System.err.println("❌ Connection Failed. Status: " + response.code());
+                System.err.println("❌ Data: " + (response.body() != null ? response.body().string() : "null"));
+                return false;
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Connection Error (Network/Proxy problem?): " + e.getMessage());
+            System.err.println("❌ 连接错误（网络/代理问题？）：" + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
     }
 
     /**

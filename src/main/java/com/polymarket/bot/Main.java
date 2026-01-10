@@ -58,6 +58,12 @@ public class Main {
             // Send a test alert immediately / 立即发送测试警报
             watcher.sendTestAlert();
 
+            // Verify Connection / 验证连接
+            if (!watcher.testConnection()) {
+                System.err.println(
+                        "⚠️ WARNING: Goldsky Connection Failed. Please check PROXY_GUIDE.md. / 警告：Goldsky 连接失败。请检查 PROXY_GUIDE.md。");
+            }
+
             // 4. Schedule Polling (e.g., every 5 seconds) / 调度轮询（例如，每 5 秒）
             ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
             scheduler.scheduleAtFixedRate(watcher::poll, 0, 5, TimeUnit.SECONDS);
