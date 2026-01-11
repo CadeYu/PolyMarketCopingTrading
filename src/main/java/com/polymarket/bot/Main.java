@@ -73,7 +73,7 @@ public class Main {
             WhaleWatcher watcher = new WhaleWatcher(bot, executor);
 
             // Send a test alert immediately / 立即发送测试警报
-            watcher.sendTestAlert();
+            // watcher.sendTestAlert(); // Disabled to prevent spam / 已禁用以防止刷屏
 
             // Verify Connection / 验证连接
             if (!watcher.testConnection()) {
