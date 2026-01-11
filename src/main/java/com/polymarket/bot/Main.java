@@ -11,6 +11,8 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
 
 /**
  * Main Entry Point.
@@ -62,6 +64,24 @@ public class Main {
             if (!watcher.testConnection()) {
                 System.err.println(
                         "⚠️ WARNING: Goldsky Connection Failed. Please check PROXY_GUIDE.md. / 警告：Goldsky 连接失败。请检查 PROXY_GUIDE.md。");
+            }
+
+            // 5. Start Keep-Alive Server (For Render/Fly Health Checks) / 启动保活服务器（用于
+            // Render/Fly 健康检查）
+            try {
+                int port = Integer.parseInt(dotenv.get("PORT", "8080"));
+                HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+                server.createContext("/", exchange -> {
+                    String response = "Polymarket Bot is Running. / Polymarket 机器人正在运行。";
+                    exchange.sendResponseHeaders(200, response.getBytes().length);
+                    try (var os = exchange.getResponseBody()) {
+                        os.write(response.getBytes());
+                    }
+                });
+                server.start();
+                System.out.println("Keep-Alive HTTP Server started on port " + port);
+            } catch (Exception e) {
+                System.err.println("Failed to start HTTP Server: " + e.getMessage());
             }
 
             // 4. Schedule Polling (e.g., every 5 seconds) / 调度轮询（例如，每 5 秒）
