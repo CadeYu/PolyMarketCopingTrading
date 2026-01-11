@@ -21,9 +21,16 @@ import java.net.InetSocketAddress;
 public class Main {
     public static void main(String[] args) {
         // 1. Load Environment Variables / 加载环境变量
-        Dotenv dotenv = Dotenv.load();
+        // Handle case where .env file is missing (e.g. Docker/Production)
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+
         String botToken = dotenv.get("TELEGRAM_BOT_TOKEN");
+        if (botToken == null)
+            botToken = System.getenv("TELEGRAM_BOT_TOKEN");
+
         String chatId = dotenv.get("TELEGRAM_CHAT_ID");
+        if (chatId == null)
+            chatId = System.getenv("TELEGRAM_CHAT_ID");
 
         if (botToken == null || chatId == null) {
             System.err.println("Error: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set in .env");
@@ -36,7 +43,12 @@ public class Main {
             DefaultBotOptions botOptions = new DefaultBotOptions();
 
             String proxyHost = dotenv.get("HTTP_PROXY_HOST");
+            if (proxyHost == null)
+                proxyHost = System.getenv("HTTP_PROXY_HOST");
+
             String proxyPort = dotenv.get("HTTP_PROXY_PORT");
+            if (proxyPort == null)
+                proxyPort = System.getenv("HTTP_PROXY_PORT");
 
             if (proxyHost != null && !proxyHost.isEmpty() && proxyPort != null && !proxyPort.isEmpty()) {
                 botOptions.setProxyType(DefaultBotOptions.ProxyType.HTTP);

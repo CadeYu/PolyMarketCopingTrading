@@ -11,7 +11,7 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/polymarket-copy-trader-1.0-SNAPSHOT.jar bot.jar
-COPY .env.example .env
+# COPY .env.example .env
 
 # Set default env vars (can be overridden by cloud provider)
 # 设置默认环境变量（可由云提供商覆盖）
