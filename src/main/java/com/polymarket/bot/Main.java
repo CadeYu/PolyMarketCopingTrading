@@ -5,8 +5,6 @@ import com.polymarket.bot.service.TradeExecutor;
 import com.polymarket.bot.service.WhaleWatcher;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
-import org.telegram.telegrambots.meta.TelegramBotsApi;
-import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -62,9 +60,9 @@ public class Main {
             }
 
             TelegramNotifier bot = new TelegramNotifier(botOptions, botToken, chatId);
-            TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(bot);
-            System.out.println("Telegram Bot started successfully. / Telegram 机器人启动成功。");
+            // No need to register bot - we're using send-only mode (no Long Polling)
+            // 无需注册机器人 - 我们使用仅发送模式（无长轮询）
+            System.out.println("Telegram Notifier initialized (Send-only mode). / Telegram 通知器已初始化（仅发送模式）。");
 
             bot.sendAlert("🤖 Polymarket Bot Started! Monitoring whales... \n🤖 Polymarket 机器人已启动！正在监控巨鲸...");
 

@@ -1,40 +1,28 @@
 package com.polymarket.bot.service;
 
+import org.telegram.telegrambots.bots.DefaultAbsSender;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
-import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 /**
- * Handles sending notifications to Telegram.
- * 处理发送通知到 Telegram。
+ * Handles sending notifications to Telegram (Send-only mode).
+ * 处理发送通知到 Telegram（仅发送模式）。
  */
-public class TelegramNotifier extends TelegramLongPollingBot {
+public class TelegramNotifier extends DefaultAbsSender {
 
     private final String botToken;
     private final String chatId;
 
     public TelegramNotifier(DefaultBotOptions options, String botToken, String chatId) {
-        super(options, botToken);
+        super(options);
         this.botToken = botToken;
         this.chatId = chatId;
     }
 
     @Override
-    public String getBotUsername() {
-        return "PolymarketCopyBot";
-    }
-
-    @Override
     public String getBotToken() {
         return botToken;
-    }
-
-    @Override
-    public void onUpdateReceived(Update update) {
-        // We only send alerts, so we strictly ignore incoming messages for now.
-        // 我们只发送警报，所以目前严格忽略传入的消息。
     }
 
     /**
