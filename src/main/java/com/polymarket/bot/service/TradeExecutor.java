@@ -14,12 +14,16 @@ public class TradeExecutor {
 
     public TradeExecutor(TelegramNotifier notifier) {
         this.notifier = notifier;
-        Dotenv dotenv = Dotenv.load();
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
 
         String amountStr = dotenv.get("COPY_TRADE_AMOUNT");
+        if (amountStr == null)
+            amountStr = System.getenv("COPY_TRADE_AMOUNT");
         this.copyAmount = (amountStr != null) ? Double.parseDouble(amountStr) : 10.0;
 
         String mode = dotenv.get("TRADE_MODE");
+        if (mode == null)
+            mode = System.getenv("TRADE_MODE");
         this.isSimulation = !"REAL".equalsIgnoreCase(mode);
 
         System.out.println("TradeExecutor initialized. Mode: " + (isSimulation ? "SIMULATION" : "REAL") + ", Amount: $"

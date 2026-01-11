@@ -33,9 +33,12 @@ public class Main {
             chatId = System.getenv("TELEGRAM_CHAT_ID");
 
         if (botToken == null || chatId == null) {
-            System.err.println("Error: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set in .env");
-            System.err.println("错误：.env 中未设置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID");
-            return;
+            System.err.println("Fatal Error: Missing Configuration");
+            System.err.println("TELEGRAM_BOT_TOKEN: " + (botToken == null ? "[MISSING]" : "[SET]"));
+            System.err.println("TELEGRAM_CHAT_ID: " + (chatId == null ? "[MISSING]" : "[SET]"));
+            System.err.println(
+                    "Please set these environment variables in your cloud provider (Render/Fly) or .env file.");
+            System.exit(1);
         }
 
         try {

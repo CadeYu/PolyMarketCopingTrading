@@ -57,11 +57,16 @@ public class WhaleWatcher {
         this.mapper = new ObjectMapper();
 
         // Load dotenv first needed for Proxy config
-        Dotenv dotenv = Dotenv.load();
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
 
         // Configure Proxy for OkHttp (Goldsky API)
         String proxyHost = dotenv.get("HTTP_PROXY_HOST");
+        if (proxyHost == null)
+            proxyHost = System.getenv("HTTP_PROXY_HOST");
+
         String proxyPort = dotenv.get("HTTP_PROXY_PORT");
+        if (proxyPort == null)
+            proxyPort = System.getenv("HTTP_PROXY_PORT");
 
         if (proxyHost != null && !proxyHost.isEmpty() && proxyPort != null && !proxyPort.isEmpty()) {
             java.net.Proxy proxy = new java.net.Proxy(java.net.Proxy.Type.HTTP,
@@ -81,6 +86,9 @@ public class WhaleWatcher {
 
         // Load manual watchlist from env / 从环境变量加载手动观察列表
         String manualList = dotenv.get("MANUAL_WATCHLIST");
+        if (manualList == null)
+            manualList = System.getenv("MANUAL_WATCHLIST");
+
         if (manualList != null && !manualList.isEmpty()) {
             String[] addresses = manualList.split(",");
             for (String addr : addresses) {
@@ -95,9 +103,13 @@ public class WhaleWatcher {
 
         // Load filter config / 加载过滤配置
         String maxTradesStr = dotenv.get("MAX_DAILY_TRADES");
+        if (maxTradesStr == null)
+            maxTradesStr = System.getenv("MAX_DAILY_TRADES");
         this.maxDailyTrades = (maxTradesStr != null) ? Integer.parseInt(maxTradesStr) : 50;
 
         String minWinRateStr = dotenv.get("MIN_WIN_RATE");
+        if (minWinRateStr == null)
+            minWinRateStr = System.getenv("MIN_WIN_RATE");
         this.minWinRate = (minWinRateStr != null) ? Double.parseDouble(minWinRateStr) : 0.60;
 
         System.out.println("Bot Filter: Max Daily Trades = " + maxDailyTrades + ", Min Win Rate = " + minWinRate);
